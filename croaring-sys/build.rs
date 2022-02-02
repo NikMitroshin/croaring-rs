@@ -1,13 +1,12 @@
 extern crate bindgen;
 extern crate cc;
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 fn main() {
     cc::Build::new()
         .flag_if_supported("-std=c11")
-        .flag_if_supported("-march=native")
+        .flag_if_supported("-march=generic")
         .flag_if_supported("-O3")
         .file("CRoaring/roaring.c")
         .compile("libroaring.a");
