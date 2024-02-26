@@ -1,25 +1,44 @@
-extern crate bindgen;
-extern crate cc;
-
-use std::{env, path::PathBuf};
+use std::env;
+use std::path::PathBuf;
 
 fn main() {
-    cc::Build::new()
-        .flag_if_supported("-std=c11")
-        .flag_if_supported("-march=generic")
-        .flag_if_supported("-O3")
-        .file("CRoaring/roaring.c")
-        .compile("libroaring.a");
+    println!("cargo:rerun-if-changed=CRoaring");
+    println!("cargo:rerun-if-env-changed=ROARING_ARCH");
 
-    let bindings = bindgen::Builder::default()
-        .blacklist_type("max_align_t")
-        .header("CRoaring/roaring.h")
-        .generate_inline_functions(true)
-        .generate()
-        .expect("Unable to generate bindings");
+    let mut build = cc::Build::new();
+    build.file("CRoaring/roaring.c");
+
+    if let Ok(target_arch) = env::var("ROARING_ARCH") {
+        build.flag_if_supported(&format!("-march={}", target_arch));
+    }
+
+    build.flag_if_supported("-Wno-unused-function");
+    build.compile("roaring");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("croaring-sys.rs"))
-        .expect("Couldn't write bindings!");
+
+    #[cfg(feature = "buildtime_bindgen")]
+    {
+        bindgen::Builder::default()
+            .header("CRoaring/roaring.h")
+            .generate_inline_functions(true)
+            .allowlist_function("roaring.*")
+            .allowlist_function("bitset.*")
+            .allowlist_type("roaring.*")
+            .allowlist_var("roaring.*")
+            .allowlist_var("ROARING.*")
+            .generate()
+            .unwrap_or_else(|_| panic!("could not run bindgen on header CRoaring/roaring.h"))
+            .write_to_file(out_path.join("croaring-sys.rs"))
+            .expect("Couldn't write bindings!");
+    }
+    #[cfg(not(feature = "buildtime_bindgen"))]
+    {
+        use std::fs;
+        fs::copy(
+            "CRoaring/bindgen_bundled_version.rs",
+            out_path.join("croaring-sys.rs"),
+        )
+        .expect("Could not copy bindings to output directory");
+    }
 }
